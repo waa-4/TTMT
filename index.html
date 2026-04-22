@@ -1,178 +1,199 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tap To Move Test</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #111;
-      touch-action: none;
-      font-family: Arial, sans-serif;
-    }
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Square Social</title>
 
-    canvas {
-      display: block;
-      background:
-        radial-gradient(circle at center, #1b1b1b 0%, #0d0d0d 100%);
-    }
+<style>
+body {
+  margin:0;
+  background:#111;
+  overflow:hidden;
+  font-family:sans-serif;
+}
 
-    .ui {
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      color: white;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 14px;
-      user-select: none;
-      pointer-events: none;
-    }
-  </style>
+canvas {
+  display:block;
+}
+
+#ui {
+  position:fixed;
+  bottom:10px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+}
+
+button {
+  font-size:18px;
+  padding:5px 10px;
+  background:black;
+  color:white;
+  border:1px solid white;
+  cursor:pointer;
+}
+
+#roomUI {
+  position:fixed;
+  top:10px;
+  left:10px;
+  color:white;
+}
+</style>
 </head>
+
 <body>
-  <div class="ui">Click or tap to move</div>
-  <canvas id="game"></canvas>
 
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
+<div id="roomUI">
+  Room:
+  <button onclick="switchRoom(0)">A</button>
+  <button onclick="switchRoom(1)">B</button>
+</div>
 
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+<div id="ui"></div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+// Rooms
+let currentRoom = 0;
+
+let rooms = [
+  { color:"#1a1a1a", players:[] },
+  { color:"#001a2a", players:[] }
+];
+
+// Player
+let player = {
+  x:200,
+  y:200,
+  targetX:200,
+  targetY:200,
+  size:30,
+  speed:4,
+  emoji:null,
+  emojiTimer:0
+};
+
+// Fake players per room
+function createFakePlayers() {
+  rooms.forEach(room => {
+    room.players = [];
+    for (let i=0;i<4;i++) {
+      room.players.push({
+        x:Math.random()*800,
+        y:Math.random()*500,
+        size:30,
+        emoji:null,
+        emojiTimer:0
+      });
+    }
+  });
+}
+createFakePlayers();
+
+// Movement
+canvas.onclick = e => {
+  player.targetX = e.clientX;
+  player.targetY = e.clientY;
+};
+
+// Emotes
+const emojis = ["😭","😀","😠","😕","👋","😎","❗","❓","❎","✅","👏"];
+
+const ui = document.getElementById("ui");
+
+emojis.forEach(em => {
+  let btn = document.createElement("button");
+  btn.textContent = em;
+  btn.onclick = () => sendEmoji(em);
+  ui.appendChild(btn);
+});
+
+function sendEmoji(em) {
+  player.emoji = em;
+  player.emojiTimer = 120;
+}
+
+// Room switch
+function switchRoom(id) {
+  currentRoom = id;
+}
+
+// Update
+function update() {
+
+  // Player movement
+  let dx = player.targetX - player.x;
+  let dy = player.targetY - player.y;
+  let dist = Math.hypot(dx,dy);
+
+  if (dist > 1) {
+    player.x += dx/dist * player.speed;
+    player.y += dy/dist * player.speed;
+  }
+
+  // Emoji decay
+  if (player.emojiTimer > 0) player.emojiTimer--;
+  else player.emoji = null;
+
+  // Fake players random emotes
+  rooms[currentRoom].players.forEach(p => {
+    if (Math.random() < 0.005) {
+      p.emoji = emojis[Math.floor(Math.random()*emojis.length)];
+      p.emojiTimer = 100;
     }
 
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
+    if (p.emojiTimer > 0) p.emojiTimer--;
+    else p.emoji = null;
+  });
+}
 
-    const player = {
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-      size: 32,
-      speed: 4,
-      color: "#ff4fd8",
-      targetX: window.innerWidth / 2,
-      targetY: window.innerHeight / 2,
-      moving: false
-    };
+// Draw
+function draw() {
 
-    function setTarget(x, y) {
-      player.targetX = x;
-      player.targetY = y;
-      player.moving = true;
+  ctx.fillStyle = rooms[currentRoom].color;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Player
+  ctx.fillStyle = "hotpink";
+  ctx.fillRect(player.x-15, player.y-15, 30, 30);
+
+  if (player.emoji) {
+    ctx.fillStyle = "white";
+    ctx.font = "20px sans-serif";
+    ctx.fillText(player.emoji, player.x-10, player.y-25);
+  }
+
+  // Others
+  rooms[currentRoom].players.forEach(p => {
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(p.x-15, p.y-15, 30, 30);
+
+    if (p.emoji) {
+      ctx.fillStyle = "white";
+      ctx.fillText(p.emoji, p.x-10, p.y-25);
     }
+  });
+}
 
-    function getPointerPosition(event) {
-      const rect = canvas.getBoundingClientRect();
+// Loop
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
 
-      if (event.touches && event.touches.length > 0) {
-        return {
-          x: event.touches[0].clientX - rect.left,
-          y: event.touches[0].clientY - rect.top
-        };
-      }
+loop();
+</script>
 
-      return {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top
-      };
-    }
-
-    canvas.addEventListener("click", (event) => {
-      const pos = getPointerPosition(event);
-      setTarget(pos.x, pos.y);
-    });
-
-    canvas.addEventListener("touchstart", (event) => {
-      event.preventDefault();
-      const pos = getPointerPosition(event);
-      setTarget(pos.x, pos.y);
-    }, { passive: false });
-
-    function updatePlayer() {
-      const dx = player.targetX - player.x;
-      const dy = player.targetY - player.y;
-      const distance = Math.hypot(dx, dy);
-
-      if (distance > 1) {
-        const dirX = dx / distance;
-        const dirY = dy / distance;
-
-        player.x += dirX * player.speed;
-        player.y += dirY * player.speed;
-      } else {
-        player.x = player.targetX;
-        player.y = player.targetY;
-        player.moving = false;
-      }
-    }
-
-    function drawGrid() {
-      const gridSize = 40;
-      ctx.strokeStyle = "rgba(255,255,255,0.05)";
-      ctx.lineWidth = 1;
-
-      for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-
-      for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-      }
-    }
-
-    function drawTargetMarker() {
-      if (!player.moving) return;
-
-      ctx.beginPath();
-      ctx.arc(player.targetX, player.targetY, 10, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    function drawPlayer() {
-      ctx.fillStyle = player.color;
-      ctx.fillRect(
-        player.x - player.size / 2,
-        player.y - player.size / 2,
-        player.size,
-        player.size
-      );
-
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(
-        player.x - player.size / 2,
-        player.y - player.size / 2,
-        player.size,
-        player.size
-      );
-    }
-
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      updatePlayer();
-      drawGrid();
-      drawTargetMarker();
-      drawPlayer();
-
-      requestAnimationFrame(gameLoop);
-    }
-
-    gameLoop();
-  </script>
 </body>
 </html>
