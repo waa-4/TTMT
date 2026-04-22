@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tap To Move Test</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #111;
+      touch-action: none;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      background:
+        radial-gradient(circle at center, #1b1b1b 0%, #0d0d0d 100%);
+    }
+
+    .ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      color: white;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      user-select: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="ui">Click or tap to move</div>
+  <canvas id="game"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    const player = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      size: 32,
+      speed: 4,
+      color: "#ff4fd8",
+      targetX: window.innerWidth / 2,
+      targetY: window.innerHeight / 2,
+      moving: false
+    };
+
+    function setTarget(x, y) {
+      player.targetX = x;
+      player.targetY = y;
+      player.moving = true;
+    }
+
+    function getPointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+
+      if (event.touches && event.touches.length > 0) {
+        return {
+          x: event.touches[0].clientX - rect.left,
+          y: event.touches[0].clientY - rect.top
+        };
+      }
+
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    canvas.addEventListener("click", (event) => {
+      const pos = getPointerPosition(event);
+      setTarget(pos.x, pos.y);
+    });
+
+    canvas.addEventListener("touchstart", (event) => {
+      event.preventDefault();
+      const pos = getPointerPosition(event);
+      setTarget(pos.x, pos.y);
+    }, { passive: false });
+
+    function updatePlayer() {
+      const dx = player.targetX - player.x;
+      const dy = player.targetY - player.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance > 1) {
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+
+        player.x += dirX * player.speed;
+        player.y += dirY * player.speed;
+      } else {
+        player.x = player.targetX;
+        player.y = player.targetY;
+        player.moving = false;
+      }
+    }
+
+    function drawGrid() {
+      const gridSize = 40;
+      ctx.strokeStyle = "rgba(255,255,255,0.05)";
+      ctx.lineWidth = 1;
+
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawTargetMarker() {
+      if (!player.moving) return;
+
+      ctx.beginPath();
+      ctx.arc(player.targetX, player.targetY, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(
+        player.x - player.size / 2,
+        player.y - player.size / 2,
+        player.size,
+        player.size
+      );
+
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        player.x - player.size / 2,
+        player.y - player.size / 2,
+        player.size,
+        player.size
+      );
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      updatePlayer();
+      drawGrid();
+      drawTargetMarker();
+      drawPlayer();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
