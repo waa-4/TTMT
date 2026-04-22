@@ -1,199 +1,281 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Square Social</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Square Social</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #111;
+      font-family: Arial, sans-serif;
+      touch-action: none;
+    }
 
-<style>
-body {
-  margin:0;
-  background:#111;
-  overflow:hidden;
-  font-family:sans-serif;
-}
+    canvas {
+      display: block;
+      background: #181818;
+    }
 
-canvas {
-  display:block;
-}
+    .topbar {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      z-index: 10;
+    }
 
-#ui {
-  position:fixed;
-  bottom:10px;
-  left:50%;
-  transform:translateX(-50%);
-  display:flex;
-  gap:5px;
-  flex-wrap:wrap;
-}
+    .panel {
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
 
-button {
-  font-size:18px;
-  padding:5px 10px;
-  background:black;
-  color:white;
-  border:1px solid white;
-  cursor:pointer;
-}
+    .room-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
 
-#roomUI {
-  position:fixed;
-  top:10px;
-  left:10px;
-  color:white;
-}
-</style>
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #2a2a2a;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #3a3a3a;
+    }
+
+    .emoji-bar {
+      position: fixed;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: calc(100vw - 24px);
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .emoji-btn {
+      width: 42px;
+      height: 42px;
+      font-size: 22px;
+      padding: 0;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+  </style>
 </head>
-
 <body>
+  <div class="topbar">
+    <div class="panel" id="status">Connecting...</div>
+    <div class="panel">
+      <div>Rooms</div>
+      <div class="room-buttons" id="roomButtons"></div>
+    </div>
+  </div>
 
-<div id="roomUI">
-  Room:
-  <button onclick="switchRoom(0)">A</button>
-  <button onclick="switchRoom(1)">B</button>
-</div>
+  <div class="emoji-bar" id="emojiBar"></div>
+  <canvas id="game"></canvas>
 
-<div id="ui"></div>
+  <script>
+    const SERVER_URL = "ws://localhost:3000";
 
-<canvas id="game"></canvas>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const roomButtonsEl = document.getElementById("roomButtons");
+    const emojiBarEl = document.getElementById("emojiBar");
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
 
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
 
-// Rooms
-let currentRoom = 0;
+    const ROOM_THEMES = {
+      plaza: "#181818",
+      lounge: "#122033",
+      rooftop: "#23122f"
+    };
 
-let rooms = [
-  { color:"#1a1a1a", players:[] },
-  { color:"#001a2a", players:[] }
-];
+    const ALLOWED_EMOJIS = ["😭","😀","😠","😕","👋","😎","❗","❓","❎","✅","👏"];
 
-// Player
-let player = {
-  x:200,
-  y:200,
-  targetX:200,
-  targetY:200,
-  size:30,
-  speed:4,
-  emoji:null,
-  emojiTimer:0
-};
+    let socket;
+    let myId = null;
+    let currentRoom = "plaza";
+    let players = {};
+    let localTarget = { x: 250, y: 250 };
 
-// Fake players per room
-function createFakePlayers() {
-  rooms.forEach(room => {
-    room.players = [];
-    for (let i=0;i<4;i++) {
-      room.players.push({
-        x:Math.random()*800,
-        y:Math.random()*500,
-        size:30,
-        emoji:null,
-        emojiTimer:0
+    function connect() {
+      socket = new WebSocket(SERVER_URL);
+
+      socket.onopen = () => {
+        statusEl.textContent = "Connected";
+      };
+
+      socket.onclose = () => {
+        statusEl.textContent = "Disconnected";
+      };
+
+      socket.onerror = () => {
+        statusEl.textContent = "Connection error";
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "welcome") {
+          myId = data.id;
+          currentRoom = data.room;
+          buildRoomButtons(data.rooms || []);
+        }
+
+        if (data.type === "state") {
+          currentRoom = data.room;
+          players = data.players || {};
+        }
+      };
+    }
+
+    function buildRoomButtons(rooms) {
+      roomButtonsEl.innerHTML = "";
+      rooms.forEach((roomName) => {
+        const btn = document.createElement("button");
+        btn.textContent = roomName;
+        btn.onclick = () => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+              type: "joinRoom",
+              room: roomName
+            }));
+          }
+        };
+        roomButtonsEl.appendChild(btn);
       });
     }
-  });
-}
-createFakePlayers();
 
-// Movement
-canvas.onclick = e => {
-  player.targetX = e.clientX;
-  player.targetY = e.clientY;
-};
-
-// Emotes
-const emojis = ["😭","😀","😠","😕","👋","😎","❗","❓","❎","✅","👏"];
-
-const ui = document.getElementById("ui");
-
-emojis.forEach(em => {
-  let btn = document.createElement("button");
-  btn.textContent = em;
-  btn.onclick = () => sendEmoji(em);
-  ui.appendChild(btn);
-});
-
-function sendEmoji(em) {
-  player.emoji = em;
-  player.emojiTimer = 120;
-}
-
-// Room switch
-function switchRoom(id) {
-  currentRoom = id;
-}
-
-// Update
-function update() {
-
-  // Player movement
-  let dx = player.targetX - player.x;
-  let dy = player.targetY - player.y;
-  let dist = Math.hypot(dx,dy);
-
-  if (dist > 1) {
-    player.x += dx/dist * player.speed;
-    player.y += dy/dist * player.speed;
-  }
-
-  // Emoji decay
-  if (player.emojiTimer > 0) player.emojiTimer--;
-  else player.emoji = null;
-
-  // Fake players random emotes
-  rooms[currentRoom].players.forEach(p => {
-    if (Math.random() < 0.005) {
-      p.emoji = emojis[Math.floor(Math.random()*emojis.length)];
-      p.emojiTimer = 100;
+    function buildEmojiButtons() {
+      emojiBarEl.innerHTML = "";
+      ALLOWED_EMOJIS.forEach((emoji) => {
+        const btn = document.createElement("button");
+        btn.className = "emoji-btn";
+        btn.textContent = emoji;
+        btn.onclick = () => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+              type: "emoji",
+              emoji
+            }));
+          }
+        };
+        emojiBarEl.appendChild(btn);
+      });
     }
 
-    if (p.emojiTimer > 0) p.emojiTimer--;
-    else p.emoji = null;
-  });
-}
+    function setMoveTarget(x, y) {
+      localTarget.x = x;
+      localTarget.y = y;
 
-// Draw
-function draw() {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "move",
+          x,
+          y
+        }));
+      }
+    }
 
-  ctx.fillStyle = rooms[currentRoom].color;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+    canvas.addEventListener("click", (event) => {
+      setMoveTarget(event.clientX, event.clientY);
+    });
 
-  // Player
-  ctx.fillStyle = "hotpink";
-  ctx.fillRect(player.x-15, player.y-15, 30, 30);
+    canvas.addEventListener("touchstart", (event) => {
+      event.preventDefault();
+      if (!event.touches.length) return;
+      setMoveTarget(event.touches[0].clientX, event.touches[0].clientY);
+    }, { passive: false });
 
-  if (player.emoji) {
-    ctx.fillStyle = "white";
-    ctx.font = "20px sans-serif";
-    ctx.fillText(player.emoji, player.x-10, player.y-25);
-  }
+    function drawGrid() {
+      ctx.strokeStyle = "rgba(255,255,255,0.04)";
+      ctx.lineWidth = 1;
 
-  // Others
-  rooms[currentRoom].players.forEach(p => {
-    ctx.fillStyle = "#00ffff";
-    ctx.fillRect(p.x-15, p.y-15, 30, 30);
+      const size = 40;
+      for (let x = 0; x < canvas.width; x += size) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
 
-    if (p.emoji) {
+      for (let y = 0; y < canvas.height; y += size) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawRoomLabel() {
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = "16px Arial";
+      ctx.fillText(`Room: ${currentRoom}`, 20, canvas.height - 20);
+    }
+
+    function drawPlayer(p, isSelf) {
+      const size = 30;
+
+      ctx.fillStyle = isSelf ? "#ff4fd8" : "#45d7ff";
+      ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
+
       ctx.fillStyle = "white";
-      ctx.fillText(p.emoji, p.x-10, p.y-25);
+      ctx.font = "13px Arial";
+      const nameWidth = ctx.measureText(p.name).width;
+      ctx.fillText(p.name, p.x - nameWidth / 2, p.y - 24);
+
+      if (p.emoji) {
+        ctx.font = "24px Arial";
+        ctx.fillText(p.emoji, p.x - 10, p.y - 42);
+      }
     }
-  });
-}
 
-// Loop
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
+    function loop() {
+      ctx.fillStyle = ROOM_THEMES[currentRoom] || "#181818";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-loop();
-</script>
+      drawGrid();
+      drawRoomLabel();
 
+      Object.values(players).forEach((p) => {
+        drawPlayer(p, p.id === myId);
+      });
+
+      requestAnimationFrame(loop);
+    }
+
+    buildEmojiButtons();
+    connect();
+    loop();
+  </script>
 </body>
 </html>
